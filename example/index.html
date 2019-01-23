@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>VDOM</title>
+</head>
+<body>
+  <script src="../dist/bundle.js"></script>
+  <script>
+    console.log(svd);
+    var el = svd.el;
+    var diff = svd.diff;
+    var patch = svd.patch;
+
+    var count = 0
+    function renderTree() {
+      count++
+      var items = []
+      var color = (count % 2 === 0)
+        ? 'blue'
+        : 'red'
+      for (var i = 0; i < count; i++) {
+        items.push(el('li', ['Item #' + i]))
+      }
+      return el('div', {'id': 'app'}, [
+        el('h1', {style: 'color: ' + color}, ['simple virtal dom']),
+      ])
+    }
+
+    var tree = renderTree()
+    var root = tree.render()
+    document.body.appendChild(root)
+
+    setInterval(function () {
+      var newTree = renderTree()
+      var patches = diff(tree, newTree)
+      console.log(patches)
+      patch(root, patches)
+      tree = newTree
+    }, 1000)
+  </script>
+</body>
+</html>
