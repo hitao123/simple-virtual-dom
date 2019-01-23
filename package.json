@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "standard && npm run cover",
+    "test": "standard --fix && npm run cover",
     "cover": "istanbul cover ./node_modules/mocha/bin/_mocha -- -R spec",
     "dev": "nodemon --watch lib --watch test --watch index.js --exec npm test",
     "build": "browserify simple-virtual-dom.js -o dist/bundle.js"
@@ -31,5 +31,8 @@
     "sinon": "1.17.2",
     "sinon-chai": "2.8.0",
     "standard": "7.1.2"
+  },
+  "dependencies": {
+    "list-diff2": "^0.1.4"
   }
 }
