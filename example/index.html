@@ -26,6 +26,7 @@
       }
       return el('div', {'id': 'app'}, [
         el('h1', {style: 'color: ' + color}, ['simple virtal dom']),
+        el('ul', items)
       ])
     }
 
@@ -33,13 +34,13 @@
     var root = tree.render()
     document.body.appendChild(root)
 
-    setInterval(function () {
+    setTimeout(function () {
       var newTree = renderTree()
       var patches = diff(tree, newTree)
-      console.log(patches)
+      console.log(patches);
       patch(root, patches)
       tree = newTree
-    }, 1000)
+    }, 3000)
   </script>
 </body>
 </html>
