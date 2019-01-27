@@ -6,7 +6,7 @@ exports.patch = require('./lib/patch')
 },{"./lib/diff":2,"./lib/element":3,"./lib/patch":4}],2:[function(require,module,exports){
 var _ = require('./util')
 var patch = require('./patch')
-// var listDiff = require('list-diff2');
+var listDiff = require('list-diff2')
 
 /**
  * 比较两颗 dom 🌲
@@ -16,7 +16,6 @@ var patch = require('./patch')
 function diff (oldTree, newTree) {
   var index = 0
   var patches = {}
-  console.log(oldTree, newTree)
   dfsWalk(oldTree, newTree, index, patches)
   return patches
 }
@@ -25,8 +24,8 @@ function diff (oldTree, newTree) {
  * 深度优先遍历
  * @param {Element} oldTree
  * @param {Element} newTree
- * @param {} index
- * @param {} patches
+ * @param {Number} index
+ * @param {Object} patches
  */
 function dfsWalk (oldTree, newTree, index, patches) {
   var currentPatch = []
@@ -50,7 +49,7 @@ function dfsWalk (oldTree, newTree, index, patches) {
       })
     }
     // tag 相同 比较子节点
-    diffChildren(oldTree.children, newTree.children, index, patches)
+    diffChildren(oldTree.children, newTree.children, index, patches, currentPatch)
   } else {
     currentPatch.push({
       type: patch.REPLACE,
@@ -65,12 +64,20 @@ function dfsWalk (oldTree, newTree, index, patches) {
 
 /**
  * diff children
- * @param {*} oldChildren
- * @param {*} newChildren
- * @param {*} index
- * @param {*} patches
+ * @param {Array} oldChildren
+ * @param {Array} newChildren
+ * @param {Number} index
+ * @param {Object} patches
+ * @param {Object} currentPatch
  */
-function diffChildren (oldChildren, newChildren, index, patches) {
+function diffChildren (oldChildren, newChildren, index, patches, currentPatch) {
+  var diffs = listDiff(oldChildren, newChildren, 'key')
+  newChildren = diffs.children
+  if (diffs.moves.length) {
+    var reorderPatch = { type: patch.REORDER, moves: diffs.moves }
+    currentPatch.push(reorderPatch)
+  }
+
   var leftNode = null
   var currentNodeIndex = index
   oldChildren.forEach(function (child, i) {
@@ -88,8 +95,8 @@ function diffChildren (oldChildren, newChildren, index, patches) {
  */
 function diffProps (oldNode, newNode) {
   var count = 0
-  var oldProps = oldNode.oldProps
-  var newProps = newNode.oldProps
+  var oldProps = oldNode.props
+  var newProps = newNode.props
 
   var key, value
   var propsPatches = {}
@@ -118,7 +125,7 @@ function diffProps (oldNode, newNode) {
 
 module.exports = diff
 
-},{"./patch":4,"./util":5}],3:[function(require,module,exports){
+},{"./patch":4,"./util":5,"list-diff2":7}],3:[function(require,module,exports){
 var _ = require('./util')
 
 /**
@@ -147,7 +154,7 @@ function Element (tagName, props, children) {
   this.props = props || {}
   this.children = children || []
   // 每一个 virtual DOM 需要一个唯一的 key
-  this.key = props ? props.key : void 0;
+  this.key = props ? props.key : void 0
 
   var count = 0
 
@@ -190,6 +197,7 @@ var PROPS = 2
 var TEXT = 3
 
 function patch (node, patches) {
+  console.log(node, patches)
   var walker = { index: 0 }
   dfsWalk(node, walker, patches)
 }
@@ -215,16 +223,21 @@ function applyPatches (node, currentPatches) {
   _.each(currentPatches, function (currentPatch) {
     switch (currentPatch.type) {
       case REPLACE:
-        node.replaceChild(newNode, node)
+        var newNode = (typeof currentPatch.node === 'string')
+          ? document.createTextNode(currentPatch.node)
+          : currentPatch.node.render()
+        node.parentNode.replaceChild(newNode, node)
         break
       case REORDER:
         reorderChildren()
         break
       case PROPS:
-        setProps(node)
+        setProps(node, currentPatch.props)
         break
       case TEXT:
-        node.textContent = currentPatch.content
+        if (node.textContent) {
+          node.textContent = currentPatch.content
+        }
         break
       default:
         throw new Error('Unknow patch type ' + currentPatch.type)
@@ -257,10 +270,9 @@ patch.PROPS = PROPS
 patch.TEXT = TEXT
 patch.REORDER = REORDER
 
-
 module.exports = patch
 
-},{"util":9}],5:[function(require,module,exports){
+},{"util":11}],5:[function(require,module,exports){
 var _ = exports
 
 _.type = function (obj) {
@@ -353,6 +365,157 @@ if (typeof Object.create === 'function') {
 }
 
 },{}],7:[function(require,module,exports){
+module.exports = require('./lib/diff').diff
+
+},{"./lib/diff":8}],8:[function(require,module,exports){
+/**
+ * Diff two list in O(N).
+ * @param {Array} oldList - Original List
+ * @param {Array} newList - List After certain insertions, removes, or moves
+ * @return {Object} - {moves: <Array>}
+ *                  - moves is a list of actions that telling how to remove and insert
+ */
+function diff (oldList, newList, key) {
+  var oldMap = makeKeyIndexAndFree(oldList, key)
+  var newMap = makeKeyIndexAndFree(newList, key)
+
+  var newFree = newMap.free
+
+  var oldKeyIndex = oldMap.keyIndex
+  var newKeyIndex = newMap.keyIndex
+
+  var moves = []
+
+  // a simulate list to manipulate
+  var children = []
+  var i = 0
+  var item
+  var itemKey
+  var freeIndex = 0
+
+  // fist pass to check item in old list: if it's removed or not
+  while (i < oldList.length) {
+    item = oldList[i]
+    itemKey = getItemKey(item, key)
+    if (itemKey) {
+      if (!newKeyIndex.hasOwnProperty(itemKey)) {
+        children.push(null)
+      } else {
+        var newItemIndex = newKeyIndex[itemKey]
+        children.push(newList[newItemIndex])
+      }
+    } else {
+      var freeItem = newFree[freeIndex++]
+      children.push(freeItem || null)
+    }
+    i++
+  }
+
+  var simulateList = children.slice(0)
+
+  // remove items no longer exist
+  i = 0
+  while (i < simulateList.length) {
+    if (simulateList[i] === null) {
+      remove(i)
+      removeSimulate(i)
+    } else {
+      i++
+    }
+  }
+
+  // i is cursor pointing to a item in new list
+  // j is cursor pointing to a item in simulateList
+  var j = i = 0
+  while (i < newList.length) {
+    item = newList[i]
+    itemKey = getItemKey(item, key)
+
+    var simulateItem = simulateList[j]
+    var simulateItemKey = getItemKey(simulateItem, key)
+
+    if (simulateItem) {
+      if (itemKey === simulateItemKey) {
+        j++
+      } else {
+        // new item, just inesrt it
+        if (!oldKeyIndex.hasOwnProperty(itemKey)) {
+          insert(i, item)
+        } else {
+          // if remove current simulateItem make item in right place
+          // then just remove it
+          var nextItemKey = getItemKey(simulateList[j + 1], key)
+          if (nextItemKey === itemKey) {
+            remove(i)
+            removeSimulate(j)
+            j++ // after removing, current j is right, just jump to next one
+          } else {
+            // else insert item
+            insert(i, item)
+          }
+        }
+      }
+    } else {
+      insert(i, item)
+    }
+
+    i++
+  }
+
+  function remove (index) {
+    var move = {index: index, type: 0}
+    moves.push(move)
+  }
+
+  function insert (index, item) {
+    var move = {index: index, item: item, type: 1}
+    moves.push(move)
+  }
+
+  function removeSimulate (index) {
+    simulateList.splice(index, 1)
+  }
+
+  return {
+    moves: moves,
+    children: children
+  }
+}
+
+/**
+ * Convert list to key-item keyIndex object.
+ * @param {Array} list
+ * @param {String|Function} key
+ */
+function makeKeyIndexAndFree (list, key) {
+  var keyIndex = {}
+  var free = []
+  for (var i = 0, len = list.length; i < len; i++) {
+    var item = list[i]
+    var itemKey = getItemKey(item, key)
+    if (itemKey) {
+      keyIndex[itemKey] = i
+    } else {
+      free.push(item)
+    }
+  }
+  return {
+    keyIndex: keyIndex,
+    free: free
+  }
+}
+
+function getItemKey (item, key) {
+  if (!item || !key) return void 666
+  return typeof key === 'string'
+    ? item[key]
+    : key(item)
+}
+
+exports.makeKeyIndexAndFree = makeKeyIndexAndFree // exports for test
+exports.diff = diff
+
+},{}],9:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -538,14 +701,14 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],8:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],9:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -1135,7 +1298,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":8,"_process":7,"inherits":6}],10:[function(require,module,exports){
+},{"./support/isBuffer":10,"_process":9,"inherits":6}],12:[function(require,module,exports){
 window.svd = require('./index')
 
-},{"./index":1}]},{},[10]);
+},{"./index":1}]},{},[12]);

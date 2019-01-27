@@ -51,6 +51,37 @@ describe('Test Element', function () {
     spy3.should.have.callCount(4)
   })
   it('Using `count` to get DFS index is right', function () {
+    var root = el('div', [
+      el('div', [el('div'), el('p'), el('p')]),
+      el('p', [el('span'), el('span'), el('span')]),
+      el('ul', [el('li'), el('li'), el('li')])
+    ])
 
+    var index = 0
+    function check (i, node) {
+      switch (i) {
+        case 0: return node.should.be.equal(root)
+        case 1: return node.should.be.equal(root.children[0])
+        case 2: return node.should.be.equal(root.children[0].children[0])
+        case 3: return node.should.be.equal(root.children[0].children[1])
+        case 4: return node.should.be.equal(root.children[0].children[2])
+        case 5: return node.should.be.equal(root.children[1])
+        case 6: return node.should.be.equal(root.children[1].children[0])
+        case 7: return node.should.be.equal(root.children[1].children[1])
+        case 8: return node.should.be.equal(root.children[1].children[2])
+        case 9: return node.should.be.equal(root.children[2])
+        case 10: return node.should.be.equal(root.children[2].children[0])
+        case 11: return node.should.be.equal(root.children[2].children[1])
+        case 12: return node.should.be.equal(root.children[2].children[2])
+      }
+    }
+    function dfs (root) {
+      check(index, root)
+      root.children.forEach(function (child) {
+        index++
+        dfs(child)
+      })
+    }
+    dfs(root)
   })
 })
